@@ -1,44 +1,65 @@
 import streamlit as st
+import os
+import streamlit as st
 from PIL import Image
 from ultralytics import YOLO
 
 # Load YOLO model
-model = YOLO('yolov8n.pt')
+model = YOLO('yolov8n.pt')  # Ensure you have the YOLO model file in the working directory
 
-# Streamlit UI
-st.title("Image Resizer & Focal Area Detector")
-st.write("Upload an image, and this app will detect objects and resize the most prominent focal area.")
+# Streamlit app header
+st.title("Image Resizer with Object Detection")
+st.write("Upload an image to detect objects and resize it for social media.")
 
-uploaded_file = st.file_uploader("Upload an image", type=["jpg", "jpeg", "png"])
+# File upload section
+uploaded_file = st.file_uploader("Upload an image", type=["png", "jpg", "jpeg"])
 
+# Process the uploaded file
 if uploaded_file is not None:
-    # Load and display the uploaded image
-    image = Image.open(uploaded_file)
-    st.image(image, caption="Uploaded Image", use_column_width=True)
+    try:
+        # Save uploaded file to a temporary location
+        temp_file_path = f"temp_{uploaded_file.name}"
+        with open(temp_file_path, "wb") as f:
+            f.write(uploaded_file.getbuffer())
 
-    # Perform object detection using YOLO
-    results = model(uploaded_file.name)
+        # Open the image with PIL
+        image = Image.open(temp_file_path)
 
-    # Check if any objects were detected
-    if results[0].boxes:
-        # Extract bounding box coordinates of the first detected object
-        x1, y1, x2, y2 = map(int, results[0].boxes[0].xyxy[0].tolist())
+        # Perform object detection
+        results = model(temp_file_path)
 
-        # Crop and resize the focal area
-        focal_area = image.crop((x1, y1, x2, y2))
-        resized_image = focal_area.resize((1080, 1080))  # Resize to Instagram-friendly size
+        # Check if objects are detected
+        if results[0].boxes:
+            # Extract bounding box for the first detected object
+            x1, y1, x2, y2 = results[0].boxes[0].xyxy[0].tolist()
 
-        # Display the resized focal area
-        st.image(resized_image, caption="Resized Focal Area", use_column_width=True)
+            # Crop the image to the bounding box region
+            focal_area = image.crop((int(x1), int(y1), int(x2), int(y2)))
 
-        # Save the resized image for download
-        resized_image.save("resized_image.png")
-        with open("resized_image.png", "rb") as file:
-            st.download_button(
-                label="Download Resized Image",
-                data=file,
-                file_name="resized_image.png",
-                mime="image/png"
-            )
-    else:
-        st.warning("No objects detected in the image. Please try another image.")
+            # Resize the cropped image to platform requirements
+            platform_size = (1080, 1080)  # Example size for Instagram
+            resized_image = focal_area.resize(platform_size)
+
+            # Save the resized image
+            resized_file_name = f"resized_{uploaded_file.name}"
+            resized_image.save(resized_file_name)
+
+            # Display the resized image
+            st.image(resized_image, caption="Resized Image", use_column_width=True)
+
+            # Provide download link
+            with open(resized_file_name, "rb") as file:
+                st.download_button(
+                    label="Download Resized Image",
+                    data=file,
+                    file_name=resized_file_name,
+                    mime="image/png",
+                )
+
+            # Clean up temporary files
+            os.remove(temp_file_path)
+            os.remove(resized_file_name)
+        else:
+            st.warning("No objects detected in the uploaded image.")
+    except Exception as e:
+        st.error(f"An error occurred: {e}")
